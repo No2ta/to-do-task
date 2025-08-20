@@ -1,1 +1,1 @@
-i forgot to make the repo so the first commits might be a bit so close to each other iam tryna upload every change i made
+i was planning to make a game at first but nvm i will start working on todo list now (i forgot to make a repo while making the game so no commits ;/)
