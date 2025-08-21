@@ -6,7 +6,7 @@ import time
 from typing import Dict, Any
 
 root = tk.Tk()
-root.title('To-Do + Clicker: Crazy Edition')
+root.title('your average to do task')
 try:
     root.iconbitmap('icon.ico')
 except Exception:
@@ -56,6 +56,12 @@ state: Dict[str, Any] = {
     
     "story_stage": 0,
     "cosmic_tier": 0,
+
+    "active_event": None,
+    "event_time_left": 0,
+    "last_event_time": 0,
+    "event_cooldown": 30,
+    "previous_state": {},
 }
 
 def init_first_cycle_costs():
@@ -366,6 +372,55 @@ def do_transcendence():
     refresh_all()
     save_all()
 
+EVENTS = {
+    "Bonus Clicks": {
+        "text": "A rain of clicks falls from the sky!",
+        "duration": 10,
+        "effect": lambda: state.update(clicks=state["clicks"] * 2),
+        "end_effect": lambda: state.update(clicks=state["clicks"] / 2),
+        "cooldown": 60,
+    },
+    "Efficiency Boost": {
+        "text": "Your movements are more efficient. Click power doubled!",
+        "duration": 20,
+        "effect": lambda: state.update(clicks_per_press=state["clicks_per_press"] * 2),
+        "end_effect": lambda: state.update(clicks_per_press=state["clicks_per_press"] // 2),
+        "cooldown": 60,
+    },
+    "Autoclicker Overdrive": {
+        "text": "Your autoclickers have gone into overdrive!",
+        "duration": 15,
+        "effect": lambda: state.update(autoclickers=state["autoclickers"] * 2),
+        "end_effect": lambda: state.update(autoclickers=state["autoclickers"] // 2),
+        "cooldown": 60,
+    },
+}
+
+def trigger_random_event():
+    current_time = time.time()
+    if state["active_event"] is None and current_time - state["last_event_time"] > state["event_cooldown"]:
+        if random.random() < 0.25:
+            event_name = random.choice(list(EVENTS.keys()))
+            event = EVENTS[event_name]
+            state["active_event"] = event_name
+            state["event_time_left"] = event["duration"]
+            state["previous_state"] = {k: state[k] for k in ["clicks", "clicks_per_press", "mult", "autoclickers"]}
+            event["effect"]()
+            state["last_event_time"] = current_time
+            refresh_all()
+
+def event_tick():
+    if state["active_event"] is not None:
+        state["event_time_left"] -= 1
+        if state["event_time_left"] <= 0:
+            event_name = state["active_event"]
+            event = EVENTS[event_name]
+            event["end_effect"]()
+            state["active_event"] = None
+            state["event_time_left"] = 0
+            state["event_cooldown"] = EVENTS[event_name]["cooldown"]
+            refresh_all()
+    
 menu_frame = tk.Frame(root, bg=BG_TODO)
 lbl_title = tk.Label(menu_frame, text="TO-DO LIST", font=("Arial", 40, "bold"), bg=BG_TODO, fg=FG_LIGHT)
 lbl_title.pack(pady=50)
@@ -443,13 +498,16 @@ lbl_auto.grid(row=1, column=0, padx=8, pady=5)
 lbl_tp = tk.Label(stats, text="Task Points: 0", font=("Consolas", 14, "bold"), bg=BG_CLICKER, fg=FG_LIGHT)
 lbl_tp.grid(row=1, column=1, padx=8, pady=5)
 
+lbl_event_status = tk.Label(main_grid_frame, text="", font=("Arial", 11, "bold"), bg=BG_CLICKER, fg="black")
+lbl_event_status.grid(row=2, column=0, columnspan=3, pady=(10, 0), sticky="n")
+
 btn_big_click = tk.Button(main_grid_frame, text="CLICK", font=("Arial", 24, "bold"), width=14, height=3, bg="#e74c3c", fg="white",
                           command=do_click)
-btn_big_click.grid(row=2, column=0, columnspan=3, pady=12)
+btn_big_click.grid(row=3, column=0, columnspan=3, pady=12)
 
 shop = tk.LabelFrame(main_grid_frame, text="Upgrades & Automation", font=("Arial", 12, "bold"),
                      bg=BG_CLICKER, fg=FG_LIGHT, bd=2, labelanchor="n")
-shop.grid(row=3, column=0, padx=10, pady=10, sticky="n")
+shop.grid(row=4, column=0, padx=10, pady=10, sticky="n")
 
 lbl_clicks_per_press_price = tk.Label(shop, text="", font=("Arial", 11), bg=BG_CLICKER, fg=FG_LIGHT)
 lbl_clicks_per_press_price.pack(pady=(8, 2))
@@ -489,7 +547,7 @@ btn_buy_factory.pack(pady=(0, 6))
 
 unlock = tk.LabelFrame(main_grid_frame, text="Unlock To-Do Actions", font=("Arial", 12, "bold"),
                        bg=BG_CLICKER, fg=FG_LIGHT, bd=2, labelanchor="n")
-unlock.grid(row=3, column=1, padx=10, pady=10, sticky="n")
+unlock.grid(row=4, column=1, padx=10, pady=10, sticky="n")
 
 unlock_labels: Dict[str, tk.Label] = {}
 unlock_buttons: Dict[str, tk.Button] = {}
@@ -506,7 +564,7 @@ for a in ACTIONS:
 
 prestige_frame = tk.LabelFrame(main_grid_frame, text="Prestige", font=("Arial", 12, "bold"),
                        bg=BG_CLICKER, fg=FG_LIGHT, bd=2, labelanchor="n")
-prestige_frame.grid(row=3, column=2, padx=10, pady=10, sticky="n")
+prestige_frame.grid(row=4, column=2, padx=10, pady=10, sticky="n")
 
 lbl_rebirth_points = tk.Label(prestige_frame, text="Rebirth Points: 0", font=("Arial", 12), bg=BG_CLICKER, fg=FG_LIGHT)
 lbl_rebirth_points.pack(pady=(8, 2))
@@ -550,6 +608,11 @@ def refresh_clicker_stats():
     lbl_rebirth_points.config(text=f"Rebirth Points: {int(state.get('rebirth_points', 0))}")
     lbl_rebirths.config(text=f"Rebirths: {state.get('rebirths', 0)}")
     lbl_transcendence.config(text=f"Transcendence: {state.get('transcendence', 0)} (Mult ×{state.get('cosmic_mult', 1):.1f})")
+    
+    if state["active_event"]:
+        lbl_event_status.config(text=f"{state['active_event']} Event Active! Time left: {state['event_time_left']}s")
+    else:
+        lbl_event_status.config(text="")
 
 def refresh_todo_buttons_state():
     points_label.config(text=f"Task Points: {state['task_points']}")
@@ -568,6 +631,8 @@ def refresh_all():
 def game_loop():
     state["clicks"] += clicks_per_tick()
     interns_tick()
+    event_tick()
+    trigger_random_event()
 
     refresh_all()
     root.after(1000, game_loop) 
