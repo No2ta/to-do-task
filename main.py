@@ -52,6 +52,7 @@ state: Dict[str, Any] = {
     "active_event": None,
     "story_stage": 0,
     "cosmic_tier": 0,
+    "_click_penalty": 0,
 }
 casino_window: tk.Toplevel | None = None
 
@@ -97,7 +98,8 @@ def clicks_per_tick() -> int:
 
 def clicks_per_press() -> int:
     coffee = state.get("_coffee_bonus", 1)
-    return int(max(1, state["cpc"]) * effective_mult() * coffee)
+    penalty = state.get("_click_penalty", 0)
+    return int(max(1, state["cpc"]) * effective_mult() * coffee) - penalty
 
 def format_big(n: float) -> str:
     tier = state.get("cosmic_tier", 0)
@@ -359,8 +361,8 @@ def buy_factory():
 
 EVENTS = [
     {"id": "coffee", "name": "Coffee Boost", "desc": "×3 CPC for 15s", "type": "buff", "duration": 15},
-    {"id": "crash", "name": "Computer Crash", "desc": "All unlocks temporarily relock for 20s", "type": "debuff", "duration": 20},
     {"id": "tax", "name": "Tax Season", "desc": "Lose 10% clicks unless you finish a task within 10s", "type": "challenge", "duration": 10},
+    {"id": "negative_clicks", "name": "Click Penalty", "desc": "Lose 10 clicks on every press for 20s", "type": "debuff", "duration": 20},
 ]
 
 def trigger_random_event():
@@ -376,27 +378,23 @@ def trigger_random_event():
 def apply_event_start(e):
     if e["id"] == "coffee":
         state["_coffee_bonus"] = 3
-    elif e["id"] == "crash":
-        state["_crash_locked"] = [a for a in ACTIONS if state["unlocked"].get(a)]
-        for a in state["_crash_locked"]:
-            state["unlocked"][a] = False
     elif e["id"] == "tax":
         state["_tax_deadline"] = time.time() + e["duration"]
         state["_tax_satisfied"] = False
+    elif e["id"] == "negative_clicks":
+        state["_click_penalty"] = 10
 
 def resolve_event(e):
     if e["id"] == "coffee":
         state["_coffee_bonus"] = 1
-    elif e["id"] == "crash":
-        for a in state.get("_crash_locked", []):
-            state["unlocked"][a] = True
-        state.pop("_crash_locked", None)
     elif e["id"] == "tax":
         if not state.get("_tax_satisfied"):
             lost = int(state.get("clicks", 0) * 0.1)
             state["clicks"] = max(0, state.get("clicks", 0) - lost)
         state.pop("_tax_deadline", None)
         state.pop("_tax_satisfied", None)
+    elif e["id"] == "negative_clicks":
+        state["_click_penalty"] = 0
     state["active_event"] = None
     refresh_all()
     save_all()
