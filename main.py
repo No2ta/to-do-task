@@ -3,7 +3,18 @@ from tkinter import messagebox, ttk
 import pickle
 import random
 import time
+import pygame
 from typing import Dict, Any
+import os
+import sys
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
 
 root = tk.Tk()
 root.title('your average to do list???')
@@ -55,6 +66,16 @@ state: Dict[str, Any] = {
     "_click_penalty": 0,
 }
 casino_window: tk.Toplevel | None = None
+
+
+try:
+    pygame.mixer.init()
+    pygame.mixer.music.load(resource_path("bg_music.mp3"))
+    pygame.mixer.music.play(-1) # -1 means the music will loop indefinitely
+except pygame.error as e:
+    print(f"Could not load or play music: {e}")
+except Exception as e:
+    print(f"An unexpected error occurred with music playback: {e}")
 
 def init_first_cycle_costs():
     state["costs"] = {a: random.randint(100, 200) for a in ACTIONS}
