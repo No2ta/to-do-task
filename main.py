@@ -6,7 +6,7 @@ import time
 from typing import Dict, Any
 
 root = tk.Tk()
-root.title('your average to do task??????')
+root.title('your average to do list???')
 try:
     root.iconbitmap('icon.ico')
 except Exception:
@@ -15,8 +15,8 @@ root.attributes('-fullscreen', True)
 root.bind("<Escape>", lambda e: root.attributes("-fullscreen", False))
 root.bind("<Tab>", lambda e: root.attributes("-fullscreen", True))
 
-BG_TODO = "#c58d40"  
-BG_CLICKER = "#c58d40"  
+BG_TODO = "#c58d40"
+BG_CLICKER = "#c58d40"
 BG_CASINO = "#c58d40"
 FG_LIGHT = "#ffffff"
 ACCENT = "#765424"
@@ -30,39 +30,28 @@ ACTIONS = ["add", "delete", "finish", "save", "load"]
 state: Dict[str, Any] = {
     "tasks": [],
     "task_points": 0,
-
     "clicks": 0,
-    "clicks_per_press": 1,
+    "cpc": 1,
     "mult": 1,
     "autoclickers": 0,
-    "rebirths": 0,
-    "rebirth_points": 0,
-    "transcendence": 0,
-    "cosmic_mult": 1,
-
     "unlocked": {a: False for a in ACTIONS},
     "costs": {},
     "cycle_baseline": 0,
     "relock_threshold": 0,
-
-    "price_clicks_per_press": 10,
+    "price_cpc": 10,
     "price_mult": 100,
     "price_auto": 50,
-    "price_task_to_clicks": 20,
-
+    "price_task_cpc": 20,
+    "rebirths": 0,
+    "transcendence": 0,
     "interns": 0,
     "intern_price": 500,
     "factories": 0,
     "factory_price": 2000,
-    
+    "last_event": 0,
+    "active_event": None,
     "story_stage": 0,
     "cosmic_tier": 0,
-
-    "active_event": None,
-    "event_time_left": 0,
-    "last_event_time": 0,
-    "event_cooldown": 30,
-    "previous_state": {},
 }
 casino_window: tk.Toplevel | None = None
 
@@ -80,7 +69,6 @@ def save_all():
     except Exception as ex:
         messagebox.showerror("Save Error", f"Could not save:\n{ex}")
 
-
 def load_all():
     try:
         with open(SAVE_FILE, "rb") as f:
@@ -97,19 +85,22 @@ def load_all():
     except Exception:
         init_first_cycle_costs()
 
+def prestige_multiplier() -> float:
+    return 1 + 0.1 * state["rebirths"] + 0.25 * state["transcendence"]
+
 def effective_mult() -> float:
-    rebirth_mult = state.get("rebirth_points", 0) * 0.1 + 1
-    cosmic_mult = state.get("cosmic_mult", 1)
-    return max(1, state["mult"] * rebirth_mult * cosmic_mult)
+    return max(1, state["mult"]) * prestige_multiplier()
 
 def clicks_per_tick() -> int:
     base = state["autoclickers"] + state["interns"] * 2 + state["factories"] * 10
     return int(max(0, base) * effective_mult())
 
 def clicks_per_press() -> int:
-    return int(max(1, state["clicks_per_press"]) * effective_mult())
+    coffee = state.get("_coffee_bonus", 1)
+    return int(max(1, state["cpc"]) * effective_mult() * coffee)
 
 def format_big(n: float) -> str:
+    tier = state.get("cosmic_tier", 0)
     try:
         n = float(n)
     except Exception:
@@ -118,10 +109,11 @@ def format_big(n: float) -> str:
         return f"{n/1_000_000_000:.2f}B"
     if n >= 1_000_000:
         return f"{n/1_000_000:.2f}M"
+    if tier >= 1 and n >= 1000:
+        return f"{n/1000:.2f}kT"
     if n >= 1_000:
         return f"{n/1_000:.2f}K"
     return str(int(n))
-
 
 def all_actions_unlocked() -> bool:
     return all(state["unlocked"].get(a, False) for a in ACTIONS)
@@ -143,16 +135,66 @@ def check_after_full_unlock_set_threshold():
         state["cycle_baseline"] = max(state.get("clicks", 0), 1)
         state["relock_threshold"] = state["cycle_baseline"] * 6
         refresh_all()
-    
+
 def check_story_progress():
     pass
+
+def can_rebirth() -> bool:
+    return state.get("clicks", 0) >= 1_000_000
+
+def do_rebirth():
+    if not can_rebirth():
+        messagebox.showerror("Not enough", "You need 1M clicks to rebirth.")
+        return
+    if not messagebox.askyesno("Rebirth", "Rebirth will reset most progress but grant +10% permanent bonus. Proceed?"):
+        return
+    state["rebirths"] = state.get("rebirths", 0) + 1
+    reset_partial_on_rebirth()
+    save_all()
+    messagebox.showinfo("Rebirth", f"Rebirth complete! Permanent bonus: +{state['rebirths']*10}%.")
+    check_story_progress()
+
+def can_transcend() -> bool:
+    return state.get("rebirths", 0) >= 10
+
+def do_transcendence():
+    if not can_transcend():
+        messagebox.showerror("Nope", "Need 10 rebirths to transcend.")
+        return
+    if not messagebox.askyesno("Transcendence", "Transcendence will reset rebirths but grant +25% base bonus. Proceed?"):
+        return
+    state["rebirths"] = 0
+    state["transcendence"] = state.get("transcendence", 0) + 1
+    reset_full_on_transcendence()
+    save_all()
+    messagebox.showinfo("Transcendence", f"Transcended! +{state['transcendence']*25}% base.")
+    check_story_progress()
+
+def reset_partial_on_rebirth():
+    state["clicks"] = 0
+    state["cpc"] = 1
+    state["mult"] = 1
+    state["autoclickers"] = 0
+    state["interns"] = 0
+    state["factories"] = 0
+    state["tasks"] = []
+    state["task_points"] = 0
+    state["unlocked"] = {a: False for a in ACTIONS}
+    state["price_cpc"] = 10
+    state["price_mult"] = 100
+    state["price_auto"] = 50
+    state["price_task_cpc"] = 20
+    init_first_cycle_costs()
+
+def reset_full_on_transcendence():
+    reset_partial_on_rebirth()
+    state["story_stage"] = state.get("story_stage", 0) + 1
 
 def load_tasks_into_listbox():
     if 'listbox_task' in globals() and listbox_task is not None:
         listbox_task.delete(0, tk.END)
         for t in state.get("tasks", []):
             listbox_task.insert(tk.END, t)
-
 
 def require_unlocked(action: str) -> bool:
     if not state["unlocked"].get(action, False):
@@ -191,13 +233,16 @@ def finish_task():
     try:
         idx = listbox_task.curselection()[0]
         listbox_task.delete(idx)
-        reward = 2
+        reward = int(2 * (1 + 0.05 * state.get("rebirths", 0)))
         state["task_points"] = state.get("task_points", 0) + reward
         state["tasks"] = list(listbox_task.get(0, tk.END))
         save_all()
         refresh_all()
     except Exception:
         messagebox.showerror("Select one", "No task selected.")
+    if state.get("active_event", {}).get("event", {}).get("id") == "tax":
+        state["_tax_satisfied"] = True
+        resolve_event(state["active_event"]["event"])
 
 def save_tasks_only():
     if not require_unlocked("save"):
@@ -248,14 +293,14 @@ def try_buy_action(action: str):
     save_all()
     check_after_full_unlock_set_threshold()
 
-def buy_clicks():
-    price = state.get("price_clicks_per_press", 10)
+def buy_cpc():
+    price = state.get("price_cpc", 10)
     if state["clicks"] < price:
         messagebox.showerror("Need more clicks", f"Cost: {format_big(price)}")
         return
     state["clicks"] -= price
-    state["clicks_per_press"] = state.get("clicks_per_press", 1) + 1
-    state["price_clicks_per_press"] = int((state["clicks_per_press"] + 1) ** 2 * 10)
+    state["cpc"] = state.get("cpc", 1) + 1
+    state["price_cpc"] = int((state["cpc"] + 1) ** 2 * 10)
     refresh_all()
     save_all()
 
@@ -281,14 +326,14 @@ def buy_autoclicker():
     refresh_all()
     save_all()
 
-def buy_task_to_clicks():
-    price = state.get("price_task_to_clicks", 20)
+def buy_task_to_cpc():
+    price = state.get("price_task_cpc", 20)
     if state.get("task_points", 0) < price:
         messagebox.showerror("Need task points", f"Cost: {price} TP")
         return
     state["task_points"] -= price
-    state["clicks_per_press"] = state.get("clicks_per_press", 1) + 2
-    state["price_task_to_clicks"] = int(state["price_task_to_clicks"] * 1.75 + 5)
+    state["cpc"] = state.get("cpc", 1) + 2
+    state["price_task_cpc"] = int(state["price_task_cpc"] * 1.75 + 5)
     refresh_all()
     save_all()
 
@@ -312,116 +357,58 @@ def buy_factory():
     refresh_all()
     save_all()
 
-def do_rebirth():
-    if state["clicks"] < 500_000:
-        messagebox.showerror("Rebirth requires 500K clicks.", "You need at least 500,000 clicks to rebirth.")
-        return
-    points_gained = int(state["clicks"] / 500_000)
-    state["rebirth_points"] += points_gained
-    state["rebirths"] += 1
-
-    state["clicks"] = 0
-    state["clicks_per_press"] = 1
-    state["mult"] = 1
-    state["autoclickers"] = 0
-    state["interns"] = 0
-    state["factories"] = 0
-    state["task_points"] = 0
-    
-    state["price_clicks_per_press"] = 10
-    state["price_mult"] = 100
-    state["price_auto"] = 50
-    state["price_task_to_clicks"] = 20
-    state["intern_price"] = 500
-    state["factory_price"] = 2000
-    
-    state["unlocked"] = {a: False for a in ACTIONS}
-    init_first_cycle_costs()
-    messagebox.showinfo("Rebirth!", f"Rebirthed! Gained {points_gained} rebirth points.")
-    refresh_all()
-    save_all()
-
-def do_transcendence():
-    if state["rebirth_points"] < 20:
-        messagebox.showerror("Transcendence requires 20 rebirth points.", "You need at least 20 rebirth points to transcend.")
-        return
-    
-    points_spent = 20
-    state["rebirth_points"] -= points_spent
-    state["transcendence"] += 1
-    state["cosmic_mult"] += 0.5
-    
-    state["clicks"] = 0
-    state["clicks_per_press"] = 1
-    state["mult"] = 1
-    state["autoclickers"] = 0
-    state["rebirths"] = 0
-    state["interns"] = 0
-    state["factories"] = 0
-    state["task_points"] = 0
-    
-    state["price_clicks_per_press"] = 10
-    state["price_mult"] = 100
-    state["price_auto"] = 50
-    state["price_task_to_clicks"] = 20
-    state["intern_price"] = 500
-    state["factory_price"] = 2000
-    
-    state["unlocked"] = {a: False for a in ACTIONS}
-    init_first_cycle_costs()
-    
-    messagebox.showinfo("Transcendence!", f"Transcendence completed! Your cosmic multiplier is now ×{state['cosmic_mult']:.1f}.")
-    refresh_all()
-    save_all()
-
-EVENTS = {
-    "Bonus Clicks": {
-        "text": "A rain of clicks falls from the sky!",
-        "duration": 10,
-        "effect": lambda: state.update(clicks=state["clicks"] * 2),
-        "end_effect": lambda: state.update(clicks=state["clicks"] / 2),
-        "cooldown": 60,
-    },
-    "Efficiency Boost": {
-        "text": "Your movements are more efficient. Click power doubled!",
-        "duration": 20,
-        "effect": lambda: state.update(clicks_per_press=state["clicks_per_press"] * 2),
-        "end_effect": lambda: state.update(clicks_per_press=state["clicks_per_press"] // 2),
-        "cooldown": 60,
-    },
-    "Autoclicker Overdrive": {
-        "text": "Your autoclickers have gone into overdrive!",
-        "duration": 15,
-        "effect": lambda: state.update(autoclickers=state["autoclickers"] * 2),
-        "end_effect": lambda: state.update(autoclickers=state["autoclickers"] // 2),
-        "cooldown": 60,
-    },
-}
+EVENTS = [
+    {"id": "coffee", "name": "Coffee Boost", "desc": "×3 CPC for 15s", "type": "buff", "duration": 15},
+    {"id": "crash", "name": "Computer Crash", "desc": "All unlocks temporarily relock for 20s", "type": "debuff", "duration": 20},
+    {"id": "tax", "name": "Tax Season", "desc": "Lose 10% clicks unless you finish a task within 10s", "type": "challenge", "duration": 10},
+]
 
 def trigger_random_event():
-    current_time = time.time()
-    if state["active_event"] is None and current_time - state["last_event_time"] > state["event_cooldown"]:
-        if random.random() < 0.25:
-            event_name = random.choice(list(EVENTS.keys()))
-            event = EVENTS[event_name]
-            state["active_event"] = event_name
-            state["event_time_left"] = event["duration"]
-            state["previous_state"] = {k: state[k] for k in ["clicks", "clicks_per_press", "mult", "autoclickers"]}
-            event["effect"]()
-            state["last_event_time"] = current_time
-            refresh_all()
+    now = time.time()
+    if now - state.get("last_event", 0) < 25:
+        return
+    e = random.choice(EVENTS)
+    state["active_event"] = {"event": e, "start": now}
+    state["last_event"] = now
+    apply_event_start(e)
+    refresh_all()
+
+def apply_event_start(e):
+    if e["id"] == "coffee":
+        state["_coffee_bonus"] = 3
+    elif e["id"] == "crash":
+        state["_crash_locked"] = [a for a in ACTIONS if state["unlocked"].get(a)]
+        for a in state["_crash_locked"]:
+            state["unlocked"][a] = False
+    elif e["id"] == "tax":
+        state["_tax_deadline"] = time.time() + e["duration"]
+        state["_tax_satisfied"] = False
+
+def resolve_event(e):
+    if e["id"] == "coffee":
+        state["_coffee_bonus"] = 1
+    elif e["id"] == "crash":
+        for a in state.get("_crash_locked", []):
+            state["unlocked"][a] = True
+        state.pop("_crash_locked", None)
+    elif e["id"] == "tax":
+        if not state.get("_tax_satisfied"):
+            lost = int(state.get("clicks", 0) * 0.1)
+            state["clicks"] = max(0, state.get("clicks", 0) - lost)
+        state.pop("_tax_deadline", None)
+        state.pop("_tax_satisfied", None)
+    state["active_event"] = None
+    refresh_all()
+    save_all()
 
 def event_tick():
-    if state["active_event"] is not None:
-        state["event_time_left"] -= 1
-        if state["event_time_left"] <= 0:
-            event_name = state["active_event"]
-            event = EVENTS[event_name]
-            event["end_effect"]()
-            state["active_event"] = None
-            state["event_time_left"] = 0
-            state["event_cooldown"] = EVENTS[event_name]["cooldown"]
-            refresh_all()
+    ae = state.get("active_event")
+    if not ae:
+        return
+    e = ae["event"]
+    elapsed = time.time() - ae["start"]
+    if elapsed >= e["duration"]:
+        resolve_event(e)
 
 def open_casino():
     global casino_window
@@ -431,7 +418,7 @@ def open_casino():
 
 def create_casino_window():
     modal = tk.Toplevel(root, bg=BG_CASINO)
-    modal.title("Lets go gambling :3")
+    modal.title("Crazy Casino - Coin Flip")
     modal.attributes('-fullscreen', True)
     modal.bind("<Escape>", lambda e: modal.destroy())
 
@@ -442,14 +429,89 @@ def create_casino_window():
 
     modal.protocol("WM_DELETE_WINDOW", on_close)
 
-    tk.Label(modal, text="Lets go gambling!", font=("Arial", 30, "bold"), bg=BG_CASINO, fg=FG_LIGHT).pack(pady=20)
-    tk.Button(modal, text="get out brookie", command=on_close, font=("Arial", 14, "bold"),
+    tk.Label(modal, text="THE CRAZY CASINO!", font=("Arial", 30, "bold"), bg=BG_CASINO, fg=FG_LIGHT).pack(pady=20)
+    tk.Button(modal, text="Close Casino", command=on_close, font=("Arial", 14, "bold"),
               bg=ACCENT, fg=FG_LIGHT).place(relx=0.02, rely=0.02, anchor="nw")
 
+    game_frame = tk.Frame(modal, bg=BG_CASINO)
+    game_frame.pack(expand=True)
+
+    tk.Label(game_frame, text="Coin Flip", font=("Arial", 24, "bold"), bg=BG_CASINO, fg=FG_LIGHT).pack(pady=(0, 20))
+
+    bet_frame = tk.Frame(game_frame, bg=BG_CASINO)
+    bet_frame.pack(pady=10)
+    tk.Label(bet_frame, text="Bet Amount:", font=("Arial", 14), bg=BG_CASINO, fg=FG_LIGHT).pack(side=tk.LEFT, padx=5)
+    bet_entry = tk.Entry(bet_frame, bg="#d0a465", width=15)
+    bet_entry.pack(side=tk.LEFT)
+
+    choices_frame = tk.Frame(game_frame, bg=BG_CASINO)
+    choices_frame.pack(pady=10)
+    choice = tk.StringVar(value="Heads")
+    tk.Radiobutton(choices_frame, text="Heads", variable=choice, value="Heads",
+                   font=("Arial", 14), bg=BG_CASINO, fg=FG_LIGHT, selectcolor=BG_CASINO).pack(side=tk.LEFT, padx=10)
+    tk.Radiobutton(choices_frame, text="Tails", variable=choice, value="Tails",
+                   font=("Arial", 14), bg=BG_CASINO, fg=FG_LIGHT, selectcolor=BG_CASINO).pack(side=tk.LEFT, padx=10)
+
+    coin_label = tk.Label(game_frame, text="🪙", font=("Arial", 100), bg=BG_CASINO, fg=FG_LIGHT)
+    coin_label.pack(pady=20)
+    result_label = tk.Label(game_frame, text="", font=("Arial", 18, "bold"), bg=BG_CASINO, fg=FG_LIGHT)
+    result_label.pack(pady=10)
+    payout_label = tk.Label(game_frame, text="", font=("Arial", 16), bg=BG_CASINO, fg=FG_LIGHT)
+    payout_label.pack()
+
+    is_animating = False
+
+    def animate_flip(count):
+        nonlocal is_animating
+        if count == 0:
+            result = random.choice(["Heads", "Tails"])
+            win = (result == choice.get())
+            bet_val = int(bet_entry.get())
+            payout = bet_val * 2 if win else 0
+            state["clicks"] += payout
+            result_label.config(text=f"The coin landed on {result}!")
+            payout_label.config(text=f"You { 'won ' + format_big(payout) + ' clicks!' if win else 'lost!'}")
+            coin_label.config(text=f"Heads" if result == "Heads" else f"Tails")
+            is_animating = False
+            refresh_all()
+            save_all()
+            return
+
+        coin_label.config(text="...flipping...")
+        modal.after(100, lambda: animate_flip(count - 1))
+
+    def play_coin_flip():
+        nonlocal is_animating
+        if is_animating:
+            return
+        
+        try:
+            bet = int(bet_entry.get())
+            if bet <= 0 or state["clicks"] < bet:
+                messagebox.showerror("Coin Flip", "Invalid or insufficient bet.")
+                return
+            
+            state["clicks"] -= bet
+            is_animating = True
+            coin_label.config(text="...")
+            result_label.config(text="Flipping...")
+            payout_label.config(text="")
+            animate_flip(10)
+        except ValueError:
+            messagebox.showerror("Coin Flip", "Invalid bet.")
+
+    tk.Button(game_frame, text="FLIP COIN", font=("Arial", 16, "bold"), bg="#2ecc71", fg="white",
+              command=play_coin_flip).pack(pady=20)
+
     return modal
-    
+
+def switch_frame(frame: tk.Frame):
+    for f in (menu_frame, todo_frame, clicker_frame):
+        f.pack_forget()
+    frame.pack(fill="both", expand=True)
+
 menu_frame = tk.Frame(root, bg=BG_TODO)
-lbl_title = tk.Label(menu_frame, text="TO-DO LIST", font=("Arial", 40, "bold"), bg=BG_TODO, fg=FG_LIGHT)
+lbl_title = tk.Label(menu_frame, text="average to do list (i hope)", font=("Arial", 40, "bold"), bg=BG_TODO, fg=FG_LIGHT)
 lbl_title.pack(pady=50)
 btn_start = tk.Button(menu_frame, text="Start", font=("Arial", 20, "bold"), bg=ACCENT, fg="white",
                       width=20, height=2, command=lambda: switch_frame(todo_frame))
@@ -457,7 +519,6 @@ btn_start.pack(pady=10)
 btn_exit = tk.Button(menu_frame, text="Exit", font=("Arial", 20, "bold"), bg=ACCENT, fg="white",
                      width=20, height=2, command=root.destroy)
 btn_exit.pack(pady=10)
-
 
 todo_frame = tk.Frame(root, bg=BG_TODO)
 btn_back_menu = tk.Button(todo_frame, text="Back", font=("Arial", 12, "bold"), bg=ACCENT, fg="white",
@@ -491,11 +552,6 @@ btn_load = tk.Button(btns, text="Load tasks", width=14, height=2, command=load_t
 btn_load.grid(row=1, column=2, padx=6, pady=6)
 
 clicker_frame = tk.Frame(root, bg=BG_CLICKER)
-def switch_frame(frame: tk.Frame):
-    for f in (menu_frame, todo_frame, clicker_frame):
-        f.pack_forget()
-    frame.pack(fill="both", expand=True)
-
 main_grid_frame = tk.Frame(clicker_frame, bg=BG_CLICKER)
 main_grid_frame.pack(fill="both", expand=True, padx=20, pady=20)
 main_grid_frame.columnconfigure(0, weight=1)
@@ -507,7 +563,7 @@ top_bar.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 10))
 btn_back_todo = tk.Button(top_bar, text="Back to To-Do", font=("Arial", 12, "bold"), bg=ACCENT, fg="white",
                           command=lambda: switch_frame(todo_frame))
 btn_back_todo.pack(side="left")
-btn_open_casino = tk.Button(top_bar, text="lets go gambling", font=("Arial", 12, "bold"), bg=BG_CASINO, fg="white",
+btn_open_casino = tk.Button(top_bar, text="Open Casino", font=("Arial", 12, "bold"), bg=BG_CASINO, fg="white",
                             command=open_casino)
 btn_open_casino.pack(side="right")
 
@@ -539,11 +595,11 @@ shop = tk.LabelFrame(main_grid_frame, text="Upgrades & Automation", font=("Arial
                      bg=BG_CLICKER, fg=FG_LIGHT, bd=2, labelanchor="n")
 shop.grid(row=4, column=0, padx=10, pady=10, sticky="n")
 
-lbl_clicks_per_press_price = tk.Label(shop, text="", font=("Arial", 11), bg=BG_CLICKER, fg=FG_LIGHT)
-lbl_clicks_per_press_price.pack(pady=(8, 2))
-btn_upgrade_clicks = tk.Button(shop, text="+1 Clicks/Press", font=("Arial", 12, "bold"), bg="#f39c12", fg="white",
-                                command=buy_clicks, width=18)
-btn_upgrade_clicks.pack(pady=(0, 6))
+lbl_cpc_price = tk.Label(shop, text="", font=("Arial", 11), bg=BG_CLICKER, fg=FG_LIGHT)
+lbl_cpc_price.pack(pady=(8, 2))
+btn_upgrade_cpc = tk.Button(shop, text="+1 Clicks/Press", font=("Arial", 12, "bold"), bg="#f39c12", fg="white",
+                                command=buy_cpc, width=18)
+btn_upgrade_cpc.pack(pady=(0, 6))
 
 lbl_mult_price = tk.Label(shop, text="", font=("Arial", 11), bg=BG_CLICKER, fg=FG_LIGHT)
 lbl_mult_price.pack(pady=(8, 2))
@@ -557,11 +613,11 @@ btn_buy_auto = tk.Button(shop, text="+1 Autoclicker", font=("Arial", 12, "bold")
                          command=buy_autoclicker, width=18)
 btn_buy_auto.pack(pady=(0, 6))
 
-lbl_task_to_clicks_price = tk.Label(shop, text="", font=("Arial", 11), bg=BG_CLICKER, fg=FG_LIGHT)
-lbl_task_to_clicks_price.pack(pady=(8, 2))
-btn_task_to_clicks = tk.Button(shop, text="+2 Clicks (Task Pts)", font=("Arial", 12, "bold"), bg="#c0392b", fg="white",
-                                command=buy_task_to_clicks, width=18)
-btn_task_to_clicks.pack(pady=(0, 6))
+lbl_task_cpc_price = tk.Label(shop, text="", font=("Arial", 11), bg=BG_CLICKER, fg=FG_LIGHT)
+lbl_task_cpc_price.pack(pady=(8, 2))
+btn_task_to_cpc = tk.Button(shop, text="+2 Clicks (Task Pts)", font=("Arial", 12, "bold"), bg="#c0392b", fg="white",
+                                command=buy_task_to_cpc, width=18)
+btn_task_to_cpc.pack(pady=(0, 6))
 
 lbl_intern = tk.Label(shop, text="", font=("Arial", 11), bg=BG_CLICKER, fg=FG_LIGHT)
 lbl_intern.pack(pady=(6, 2))
@@ -596,36 +652,30 @@ prestige_frame = tk.LabelFrame(main_grid_frame, text="Prestige", font=("Arial", 
                        bg=BG_CLICKER, fg=FG_LIGHT, bd=2, labelanchor="n")
 prestige_frame.grid(row=4, column=2, padx=10, pady=10, sticky="n")
 
-lbl_rebirth_points = tk.Label(prestige_frame, text="Rebirth Points: 0", font=("Arial", 12), bg=BG_CLICKER, fg=FG_LIGHT)
-lbl_rebirth_points.pack(pady=(8, 2))
-lbl_rebirths = tk.Label(prestige_frame, text="Rebirths: 0", font=("Arial", 10), bg=BG_CLICKER, fg=FG_LIGHT)
-lbl_rebirths.pack(pady=(0, 6))
-btn_rebirth = tk.Button(prestige_frame, text="Rebirth\n(500K Clicks)", font=("Arial", 12, "bold"), bg="#e74c3c", fg="white",
+lbl_rebirths = tk.Label(prestige_frame, text="Rebirths: 0", font=("Arial", 12), bg=BG_CLICKER, fg=FG_LIGHT)
+lbl_rebirths.pack(pady=(8, 2))
+btn_rebirth = tk.Button(prestige_frame, text="Rebirth\n(1M Clicks)", font=("Arial", 12, "bold"), bg="#e74c3c", fg="white",
                         command=do_rebirth, width=18)
 btn_rebirth.pack(pady=(0, 10))
 
 lbl_transcendence = tk.Label(prestige_frame, text="Transcendence: 0", font=("Arial", 12), bg=BG_CLICKER, fg=FG_LIGHT)
 lbl_transcendence.pack(pady=(8, 2))
-btn_transcend = tk.Button(prestige_frame, text="Transcend\n(20 Rebirth Pts)", font=("Arial", 12, "bold"), bg="#9b59b6", fg="white",
+btn_transcend = tk.Button(prestige_frame, text="Transcend\n(10 Rebirths)", font=("Arial", 12, "bold"), bg="#9b59b6", fg="white",
                          command=do_transcendence, width=18)
 btn_transcend.pack(pady=(0, 6))
 
-
 def refresh_clicker_stats():
     lbl_clicks.config(text=f"Clicks: {format_big(state.get('clicks', 0))}")
-    lbl_clicks_per_press.config(text=f"Clicks/Press: {state.get('clicks_per_press', 1)} (+{clicks_per_press()})")
+    lbl_clicks_per_press.config(text=f"Clicks/Press: {state.get('cpc', 1)} (+{clicks_per_press()})")
     lbl_mult.config(text=f"Mult: ×{state.get('mult', 1)} (Eff ×{effective_mult():.2f})")
     lbl_auto.config(text=f"Autoclickers: {state.get('autoclickers', 0)} (per tick: {clicks_per_tick()})")
     lbl_tp.config(text=f"Task Points: {state.get('task_points', 0)}")
-
-    lbl_clicks_per_press_price.config(text=f"Price: {format_big(state.get('price_clicks_per_press', 10))} clicks")
+    lbl_cpc_price.config(text=f"Price: {format_big(state.get('price_cpc', 10))} clicks")
     lbl_mult_price.config(text=f"Price: {format_big(state.get('price_mult', 100))} clicks")
     lbl_auto_price.config(text=f"Price: {format_big(state.get('price_auto', 50))} clicks")
-    lbl_task_to_clicks_price.config(text=f"Price: {state.get('price_task_to_clicks', 20)} TP")
-
+    lbl_task_cpc_price.config(text=f"Price: {state.get('price_task_cpc', 20)} TP")
     lbl_intern.config(text=f"Interns: {state.get('interns', 0)} (Next {format_big(state.get('intern_price', 500))})")
     lbl_factory.config(text=f"Factories: {state.get('factories', 0)} (Next {format_big(state.get('factory_price', 2000))})")
-    
     for a in ACTIONS:
         cost = state['costs'].get(a, 0)
         if state['unlocked'].get(a, False):
@@ -634,13 +684,11 @@ def refresh_clicker_stats():
         else:
             unlock_labels[a].config(text=f"{a.title()}: cost {format_big(cost)}")
             unlock_buttons[a].config(state='normal', bg="#2ecc71")
-            
-    lbl_rebirth_points.config(text=f"Rebirth Points: {int(state.get('rebirth_points', 0))}")
     lbl_rebirths.config(text=f"Rebirths: {state.get('rebirths', 0)}")
-    lbl_transcendence.config(text=f"Transcendence: {state.get('transcendence', 0)} (Mult ×{state.get('cosmic_mult', 1):.1f})")
-    
+    lbl_transcendence.config(text=f"Transcendence: {state.get('transcendence', 0)}")
     if state["active_event"]:
-        lbl_event_status.config(text=f"{state['active_event']} Event Active! Time left: {state['event_time_left']}s")
+        e = state["active_event"]["event"]
+        lbl_event_status.config(text=f"{e['name']} Active! {e['desc']}")
     else:
         lbl_event_status.config(text="")
 
@@ -652,20 +700,17 @@ def refresh_todo_buttons_state():
     btn_save.config(state='normal' if state["unlocked"].get('save', False) else 'disabled')
     btn_load.config(state='normal' if state["unlocked"].get('load', False) else 'disabled')
 
-
 def refresh_all():
     refresh_clicker_stats()
     refresh_todo_buttons_state()
-
 
 def game_loop():
     state["clicks"] += clicks_per_tick()
     interns_tick()
     event_tick()
     trigger_random_event()
-
     refresh_all()
-    root.after(1000, game_loop) 
+    root.after(1000, game_loop)
 
 def on_close():
     save_all()
@@ -675,9 +720,7 @@ if __name__ == "__main__":
     load_all()
     load_tasks_into_listbox()
     refresh_all()
-
     root.protocol("WM_DELETE_WINDOW", on_close)
-
     switch_frame(menu_frame)
     game_loop()
     root.mainloop()
