@@ -6,7 +6,7 @@ import time
 from typing import Dict, Any
 
 root = tk.Tk()
-root.title('your average to do task')
+root.title('your average to do task??????')
 try:
     root.iconbitmap('icon.ico')
 except Exception:
@@ -17,6 +17,7 @@ root.bind("<Tab>", lambda e: root.attributes("-fullscreen", True))
 
 BG_TODO = "#c58d40"  
 BG_CLICKER = "#c58d40"  
+BG_CASINO = "#c58d40"
 FG_LIGHT = "#ffffff"
 ACCENT = "#765424"
 
@@ -63,6 +64,7 @@ state: Dict[str, Any] = {
     "event_cooldown": 30,
     "previous_state": {},
 }
+casino_window: tk.Toplevel | None = None
 
 def init_first_cycle_costs():
     state["costs"] = {a: random.randint(100, 200) for a in ACTIONS}
@@ -420,6 +422,31 @@ def event_tick():
             state["event_time_left"] = 0
             state["event_cooldown"] = EVENTS[event_name]["cooldown"]
             refresh_all()
+
+def open_casino():
+    global casino_window
+    if casino_window is None or not casino_window.winfo_exists():
+        casino_window = create_casino_window()
+    casino_window.lift()
+
+def create_casino_window():
+    modal = tk.Toplevel(root, bg=BG_CASINO)
+    modal.title("Lets go gambling :3")
+    modal.attributes('-fullscreen', True)
+    modal.bind("<Escape>", lambda e: modal.destroy())
+
+    def on_close():
+        modal.destroy()
+        global casino_window
+        casino_window = None
+
+    modal.protocol("WM_DELETE_WINDOW", on_close)
+
+    tk.Label(modal, text="Lets go gambling!", font=("Arial", 30, "bold"), bg=BG_CASINO, fg=FG_LIGHT).pack(pady=20)
+    tk.Button(modal, text="get out brookie", command=on_close, font=("Arial", 14, "bold"),
+              bg=ACCENT, fg=FG_LIGHT).place(relx=0.02, rely=0.02, anchor="nw")
+
+    return modal
     
 menu_frame = tk.Frame(root, bg=BG_TODO)
 lbl_title = tk.Label(menu_frame, text="TO-DO LIST", font=("Arial", 40, "bold"), bg=BG_TODO, fg=FG_LIGHT)
@@ -480,6 +507,9 @@ top_bar.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 10))
 btn_back_todo = tk.Button(top_bar, text="Back to To-Do", font=("Arial", 12, "bold"), bg=ACCENT, fg="white",
                           command=lambda: switch_frame(todo_frame))
 btn_back_todo.pack(side="left")
+btn_open_casino = tk.Button(top_bar, text="lets go gambling", font=("Arial", 12, "bold"), bg=BG_CASINO, fg="white",
+                            command=open_casino)
+btn_open_casino.pack(side="right")
 
 stats = tk.LabelFrame(main_grid_frame, text="Your Stats", font=("Arial", 14, "bold"),
                        bg=BG_CLICKER, fg=FG_LIGHT, bd=2)
