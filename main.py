@@ -34,6 +34,10 @@ state: Dict[str, Any] = {
     "clicks_per_press": 1,
     "mult": 1,
     "autoclickers": 0,
+    "rebirths": 0,
+    "rebirth_points": 0,
+    "transcendence": 0,
+    "cosmic_mult": 1,
 
     "unlocked": {a: False for a in ACTIONS},
     "costs": {},
@@ -86,7 +90,9 @@ def load_all():
         init_first_cycle_costs()
 
 def effective_mult() -> float:
-    return max(1, state["mult"])
+    rebirth_mult = state.get("rebirth_points", 0) * 0.1 + 1
+    cosmic_mult = state.get("cosmic_mult", 1)
+    return max(1, state["mult"] * rebirth_mult * cosmic_mult)
 
 def clicks_per_tick() -> int:
     base = state["autoclickers"] + state["interns"] * 2 + state["factories"] * 10
@@ -298,6 +304,68 @@ def buy_factory():
     refresh_all()
     save_all()
 
+def do_rebirth():
+    if state["clicks"] < 500_000:
+        messagebox.showerror("Rebirth requires 500K clicks.", "You need at least 500,000 clicks to rebirth.")
+        return
+    points_gained = int(state["clicks"] / 500_000)
+    state["rebirth_points"] += points_gained
+    state["rebirths"] += 1
+
+    state["clicks"] = 0
+    state["clicks_per_press"] = 1
+    state["mult"] = 1
+    state["autoclickers"] = 0
+    state["interns"] = 0
+    state["factories"] = 0
+    state["task_points"] = 0
+    
+    state["price_clicks_per_press"] = 10
+    state["price_mult"] = 100
+    state["price_auto"] = 50
+    state["price_task_to_clicks"] = 20
+    state["intern_price"] = 500
+    state["factory_price"] = 2000
+    
+    state["unlocked"] = {a: False for a in ACTIONS}
+    init_first_cycle_costs()
+    messagebox.showinfo("Rebirth!", f"Rebirthed! Gained {points_gained} rebirth points.")
+    refresh_all()
+    save_all()
+
+def do_transcendence():
+    if state["rebirth_points"] < 20:
+        messagebox.showerror("Transcendence requires 20 rebirth points.", "You need at least 20 rebirth points to transcend.")
+        return
+    
+    points_spent = 20
+    state["rebirth_points"] -= points_spent
+    state["transcendence"] += 1
+    state["cosmic_mult"] += 0.5
+    
+    state["clicks"] = 0
+    state["clicks_per_press"] = 1
+    state["mult"] = 1
+    state["autoclickers"] = 0
+    state["rebirths"] = 0
+    state["interns"] = 0
+    state["factories"] = 0
+    state["task_points"] = 0
+    
+    state["price_clicks_per_press"] = 10
+    state["price_mult"] = 100
+    state["price_auto"] = 50
+    state["price_task_to_clicks"] = 20
+    state["intern_price"] = 500
+    state["factory_price"] = 2000
+    
+    state["unlocked"] = {a: False for a in ACTIONS}
+    init_first_cycle_costs()
+    
+    messagebox.showinfo("Transcendence!", f"Transcendence completed! Your cosmic multiplier is now ×{state['cosmic_mult']:.1f}.")
+    refresh_all()
+    save_all()
+
 menu_frame = tk.Frame(root, bg=BG_TODO)
 lbl_title = tk.Label(menu_frame, text="TO-DO LIST", font=("Arial", 40, "bold"), bg=BG_TODO, fg=FG_LIGHT)
 lbl_title.pack(pady=50)
@@ -436,6 +504,24 @@ for a in ACTIONS:
     unlock_labels[a] = lbl
     unlock_buttons[a] = btn
 
+prestige_frame = tk.LabelFrame(main_grid_frame, text="Prestige", font=("Arial", 12, "bold"),
+                       bg=BG_CLICKER, fg=FG_LIGHT, bd=2, labelanchor="n")
+prestige_frame.grid(row=3, column=2, padx=10, pady=10, sticky="n")
+
+lbl_rebirth_points = tk.Label(prestige_frame, text="Rebirth Points: 0", font=("Arial", 12), bg=BG_CLICKER, fg=FG_LIGHT)
+lbl_rebirth_points.pack(pady=(8, 2))
+lbl_rebirths = tk.Label(prestige_frame, text="Rebirths: 0", font=("Arial", 10), bg=BG_CLICKER, fg=FG_LIGHT)
+lbl_rebirths.pack(pady=(0, 6))
+btn_rebirth = tk.Button(prestige_frame, text="Rebirth\n(500K Clicks)", font=("Arial", 12, "bold"), bg="#e74c3c", fg="white",
+                        command=do_rebirth, width=18)
+btn_rebirth.pack(pady=(0, 10))
+
+lbl_transcendence = tk.Label(prestige_frame, text="Transcendence: 0", font=("Arial", 12), bg=BG_CLICKER, fg=FG_LIGHT)
+lbl_transcendence.pack(pady=(8, 2))
+btn_transcend = tk.Button(prestige_frame, text="Transcend\n(20 Rebirth Pts)", font=("Arial", 12, "bold"), bg="#9b59b6", fg="white",
+                         command=do_transcendence, width=18)
+btn_transcend.pack(pady=(0, 6))
+
 
 def refresh_clicker_stats():
     lbl_clicks.config(text=f"Clicks: {format_big(state.get('clicks', 0))}")
@@ -460,6 +546,10 @@ def refresh_clicker_stats():
         else:
             unlock_labels[a].config(text=f"{a.title()}: cost {format_big(cost)}")
             unlock_buttons[a].config(state='normal', bg="#2ecc71")
+            
+    lbl_rebirth_points.config(text=f"Rebirth Points: {int(state.get('rebirth_points', 0))}")
+    lbl_rebirths.config(text=f"Rebirths: {state.get('rebirths', 0)}")
+    lbl_transcendence.config(text=f"Transcendence: {state.get('transcendence', 0)} (Mult ×{state.get('cosmic_mult', 1):.1f})")
 
 def refresh_todo_buttons_state():
     points_label.config(text=f"Task Points: {state['task_points']}")
