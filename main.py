@@ -6,7 +6,7 @@ import time
 from typing import Dict, Any
 
 root = tk.Tk()
-root.title('your average to do list')
+root.title('To-Do + Clicker: Crazy Edition')
 try:
     root.iconbitmap('icon.ico')
 except Exception:
@@ -24,6 +24,7 @@ root.configure(bg=BG_TODO)
 
 SAVE_FILE = "game_state.dat"
 
+
 ACTIONS = ["add", "delete", "finish", "save", "load"]
 
 state: Dict[str, Any] = {
@@ -34,7 +35,6 @@ state: Dict[str, Any] = {
     "cpc": 1,
     "mult": 1,
     "autoclickers": 0,
-
 
     "unlocked": {a: False for a in ACTIONS},
     "costs": {},
@@ -206,7 +206,6 @@ def try_buy_action(action: str):
     save_all()
     check_after_full_unlock_set_threshold()
 
-
 menu_frame = tk.Frame(root, bg=BG_TODO)
 lbl_title = tk.Label(menu_frame, text="TO-DO LIST", font=("Arial", 40, "bold"), bg=BG_TODO, fg=FG_LIGHT)
 lbl_title.pack(pady=50)
@@ -248,17 +247,27 @@ btn_load = tk.Button(btns, text="Load tasks", width=14, height=2, command=load_t
                      font=("Arial", 12, "bold"), bg=ACCENT, fg="white")
 btn_load.grid(row=1, column=2, padx=6, pady=6)
 
+
 clicker_frame = tk.Frame(root, bg=BG_CLICKER)
 def switch_frame(frame: tk.Frame):
     for f in (menu_frame, todo_frame, clicker_frame):
         f.pack_forget()
     frame.pack(fill="both", expand=True)
 
+
 main_grid_frame = tk.Frame(clicker_frame, bg=BG_CLICKER)
 main_grid_frame.pack(fill="both", expand=True, padx=20, pady=20)
 main_grid_frame.columnconfigure(0, weight=1)
 main_grid_frame.columnconfigure(1, weight=1)
 main_grid_frame.columnconfigure(2, weight=1)
+
+
+top_bar = tk.Frame(main_grid_frame, bg=BG_CLICKER)
+top_bar.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 10))
+btn_back_todo = tk.Button(top_bar, text="Back to To-Do", font=("Arial", 12, "bold"), bg=ACCENT, fg="white",
+                          command=lambda: switch_frame(todo_frame))
+btn_back_todo.pack(side="left")
+
 
 stats = tk.LabelFrame(main_grid_frame, text="Your Stats", font=("Arial", 14, "bold"),
                        bg=BG_CLICKER, fg=FG_LIGHT, bd=2)
@@ -271,9 +280,39 @@ lbl_clicks.grid(row=0, column=0, padx=8, pady=5)
 lbl_cpc = tk.Label(stats, text="CPC: 1", font=("Consolas", 14, "bold"), bg=BG_CLICKER, fg=FG_LIGHT)
 lbl_cpc.grid(row=0, column=1, padx=8, pady=5)
 
+btn_big_click = tk.Button(main_grid_frame, text="CLICK", font=("Arial", 24, "bold"), width=14, height=3, bg="#e74c3c", fg="white",
+                          command=do_click)
+btn_big_click.grid(row=2, column=0, columnspan=3, pady=12)
+
+unlock = tk.LabelFrame(main_grid_frame, text="Unlock To-Do Actions", font=("Arial", 12, "bold"),
+                      bg=BG_CLICKER, fg=FG_LIGHT, bd=2, labelanchor="n")
+unlock.grid(row=3, column=1, padx=10, pady=10, sticky="n")
+
+unlock_labels: Dict[str, tk.Label] = {}
+unlock_buttons: Dict[str, tk.Button] = {}
+for a in ACTIONS:
+    frame = tk.Frame(unlock, bg=BG_CLICKER)
+    frame.pack(pady=4, fill="x")
+    lbl = tk.Label(frame, text=f"{a.title()}: cost ...", font=("Arial", 11), bg=BG_CLICKER, fg=FG_LIGHT)
+    lbl.pack(side="left", padx=6)
+    btn = tk.Button(frame, text=f"Unlock {a.title()}", font=("Arial", 10, "bold"), bg="#2ecc71", fg="white",
+                    command=lambda x=a: try_buy_action(x))
+    btn.pack(side="right", padx=6)
+    unlock_labels[a] = lbl
+    unlock_buttons[a] = btn
+
 def refresh_clicker_stats():
     lbl_clicks.config(text=f"Clicks: {format_big(state.get('clicks', 0))}")
     lbl_cpc.config(text=f"CPC: {state.get('cpc', 1)}")
+
+    for a in ACTIONS:
+        cost = state['costs'].get(a, 0)
+        if state['unlocked'].get(a, False):
+            unlock_labels[a].config(text=f"{a.title()}: UNLOCKED")
+            unlock_buttons[a].config(state='disabled', bg="#1abc9c")
+        else:
+            unlock_labels[a].config(text=f"{a.title()}: cost {format_big(cost)}")
+            unlock_buttons[a].config(state='normal', bg="#2ecc71")
 
 def refresh_todo_buttons_state():
     points_label.config(text=f"Task Points: {state['task_points']}")
@@ -289,7 +328,7 @@ def refresh_all():
 
 def game_loop():
     refresh_all()
-    root.after(1000, game_loop) 
+    root.after(1000, game_loop)
 
 def on_close():
     save_all()
